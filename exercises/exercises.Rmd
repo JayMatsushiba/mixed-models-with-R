@@ -113,8 +113,11 @@ In what follows we'll change various aspects of the data, then rerun the model a
 0. First calculate or simply eyeball the intraclass correlation coefficient $\frac{\textrm{random effect variance}}{\textrm{residual + random effect variance}}$.  In addition, create a density plot of the random effects as follows.
 
 ```{r simMixed3, eval=FALSE}
-re = ranef(model)$groups
-qplot(x = re, geom = 'density', xlim = c(-3, 3))
+re = ranef(model)$groups[[1]]  # Extract the first (and only) column
+
+ggplot(data.frame(re = re), aes(x = re)) +
+  geom_density() +
+  xlim(-3, 3)
 ```
 
 1. Change the random effect variance/sd and/or the residual variance/sd and note your new estimate of the ICC, and plot the random effect as before.

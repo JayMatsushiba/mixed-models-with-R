@@ -1,0 +1,248 @@
+---
+title: "mixed_models"
+output: html_document
+date: 2025/11/07
+---
+
+# Mixed Models
+```{r load_packages}
+library(lme4)
+library(tidyverse)
+library(here)
+```
+## Standard regression
+Standard regression only uses fixed effects, so looking at the fixed effect of occasion on gpa. The model output gives an intercept of around 2.6 and a slope for occasion around 0.11. This means that on average, students start at a gpa of 2.6 and increase by 0.11 each semester. This shows a relationship between gpa and occasion, but we might be able to see more clearly if we could take into account the effect of student identity. 
+```{r}
+load(here('data/gpa.RData')) # sample GPA data 
+
+# LINEAR MODEL ----
+# gpa is the grade point average of the student 
+# occassion is the semester of the student 
+# gpa varies with occasion 
+gpa_lm <- lm(gpa ~ occasion, data = gpa)
+summary(gpa_lm)
+```
+## Regression by cluster 
+Alternative approach would be to run separate regressions for every student. Drawbacks are that it would be hard to summarize when there are many groups (each group is a student in this case, with multiple observations of gpa and occasion per student). Hard to summarize meaning that there wouldn't be many observations per group, and this approach would ignore the commonalities between students (overcontextualized). 
+
+## Mixed model
+```{r}
+# MIXED MODEL ----
+# gpa varies with occasion
+# (1 | student) syntax means allowing the model to vary the intercept by student
+
+gpa_mixed <- lmer(gpa ~ occasion + (1 | student), data = gpa)
+summary(gpa_mixed)
+```
+Fixed effects are basically the same, usually should be similar even with unbalanced data. Standard error is different though, increasing for intercept and decreasing for occasion. Standard error increases for the fixed effect intercept, because the mixed model corrects the sample size to a smaller 200, rather than 1200. The 1200 observations of gpa and occasion are not independent from one another, since each student has multiple observations and the student identity has an effect (random) on gpa. 
+
+Variance components under Random Effects: 
+We can see that there is a new column of variance, which describes how much of the variance in gpa is due to the student identity or occasion or residual (unexplained variance). 
+
+```{r}
+confint(gpa_mixed)
+```
+```{r}
+ranef(gpa_mixed)$student %>% head(5)
+```
+
+## Estimating random effects with bootstrapping
+
+```{r}
+library(merTools)
+
+predictInterval(gpa_mixed)
+REsim(gpa_mixed) %>%
+  plotREsim()
+```
+```{r}
+predict_no_re = predict(gpa_mixed, re.form=NA)
+predict_lm    = predict(gpa_lm)
+predict_with_re = predict(gpa_mixed)
+```
+
+## Exercises for starting out
+### Sleep 
+```{r}
+data("sleepstudy")
+
+# Run a regression with Reaction as the target variable and Days as the predictor
+sleep_lm <- lm(Reaction ~ Days, data = sleepstudy)
+summary(sleep_lm)
+
+# Run a mixed model with a random intercept for Subject
+sleep_random_intercept <- lmer(Reaction ~ Days + (1|Subject), data = sleepstudy)
+summary(sleep_random_intercept)
+```
+#### Interpret the variance component and fixed effects 
+The variance on Subject is around 1378.2 with the Residual being 970.5. This means that 58.7% of the variance on Reaction is due to differences between subjects. 
+
+The average intercept (or starting reaction time) across all subjects is 251.4 milliseconds, with an average increase in reaction time of 10.5 milliseconds for each day that passes. 
+
+### Adding the cluster-level covariate
+Rerun the mixed model with the GPA data adding the cluster level covariate of sex, or high school GPA (highgpa), or both. Interpret all aspects of the results.
+
+What happened to the student variance after adding cluster level covariates to the model?
+```{r}
+gpa_mixed <- lmer(gpa ~ occasion + (1 | student), data = gpa)
+summary(gpa_mixed) 
+
+gpa_mixed_sex <- lmer(gpa ~ occasion + sex + (1 | student), data = gpa)
+summary(gpa_mixed_sex)
+
+gpa_mixed_sex_highgpa <- lmer(gpa ~ occasion + sex + highgpa + (1 | student), data = gpa)
+summary(gpa_mixed_sex_highgpa)
+```
+##### WRONG ANSWER
+As we add random effects, a smaller part of the variance is due to the differences between students. The sex and highgpa covariates account for the rest of the variance. The Residual variance does not change much with the highgpa and sex covariates added, which means that the model with the additional covariates does not model the trend between occasion and gpa any better than the mixed model with only student identity. This is because conceptually the highgpa and sex covariates are related to the student identity covariate, so the variance in the highgpa and sex covariates is already accounted for within student. 
+
+##### Revised attempt
+We add the sex and highgpa as fixed effects to the mixed model, as these are characteristics of the student variable, which we are using as a clustering variable or random effect. 
+
+The variance on student is lower than the mixed model without additional covariates, with 0.05588 and 0.06372 respectively. This means that the variance due to differences between students is smaller, since those differences are now being accounted for with the sex and highgpa fixed effects. The variance on the Residual hasn't changed much across models, since the additional cluster level covariates explain some of the variation in student identity (as characteristics of students) but cannot account for additional variance to reduce the residual. 
+
+The intercept is lower with the cluster level covariates, since those covariates further account for the changes in gpa across occasion. Female students that had a higher highgpa tend to have higher gpa. 
+
+##### Another attempt
+We add the sex and highgpa as fixed effects to the mixed model, as these are characteristics of the student variable, which we are using as a clustering variable or random effect. 
+
+The variance on student is lower than the mixed model without additional covariates, with 0.05588 and 0.06372 respectively. This means that the variance due to differences between students is smaller, since those differences are now being accounted for with the sex and highgpa fixed effects. The variance on the Residual hasn't changed much across models, since the sex and highgpa covariates are characteristics of students. 
+
+The intercept is lower because the meaning has changed, from the average GPA at day 0 for all students --> the average GPA at day 0 for male students with highgpa = 0. 
+
+Female students score on average 0.156 GPA higher than male students, controlling for highgpa and time. For 1 point increase in highgpa, on average is associated with an increase of 0.092 gpa, controlling for sex and time. GPA increases on average 0.106 points per semester, regardless of sex or highgpa, since while sex and highgpa affect the intercept or starting GPA levels, in this model they do not affect the rate at which gpa increases over time. 
+
+#### Simulating a mixed model
+##### Label lines with fixed and random effects. 
+```{r}
+set.seed(1234)  # this will allow you to exactly duplicate your result
+Ngroups = 100 # number of groups 
+NperGroup = 3 # number per group
+N = Ngroups * NperGroup # number of rows / observations 
+groups = factor(rep(1:Ngroups, each = NperGroup)) # create a vector that has 3 observations of each group
+u = rnorm(Ngroups, sd = .5) # random effects by group, SD of 0.5 around 0
+e = rnorm(N, sd = .25) # error, residuals by observation, SD of 0.25 around 0
+x = rnorm(N) # fixed effect of observation, predictor variable
+y = 2 + .5 * x + u[groups] + e # generate target
+
+d = data.frame(x, y, groups) # create dataframe
+```
+##### 
+```{r}
+model = lmer(y ~ x + (1|groups), data=d)
+
+summary(model)
+
+confint(model)
+
+
+library(ggplot2)
+
+ggplot(aes(x, y), data=d) +
+  geom_point()
+```
+
+##### 0.
+```{r}
+# Calculate intraclass correlation coefficient
+icc = 0.22908 / (0.6254 + 0.22908)
+
+# Density plot of random effects
+re = lme4::ranef(model)$groups
+
+ggplot(re, aes(x = `(Intercept)`)) +
+  geom_density() +
+  xlim(-3, 3)
+```
+##### 1. 
+Change the random effect variance/sd and/or the residual variance/sd and note your new estimate of the ICC, and plot the random effect as before.
+```{r}
+set.seed(1234)  # this will allow you to exactly duplicate your result
+Ngroups = 100 # number of groups 
+NperGroup = 3 # number per group
+N = Ngroups * NperGroup # number of rows / observations 
+groups = factor(rep(1:Ngroups, each = NperGroup)) # create a vector that has 3 observations of each group
+u = rnorm(Ngroups, sd = 1) # random effects by group, SD of 1 around 0, increased
+e = rnorm(N, sd = .25) # error, residuals by observation, SD of 0.25 around 0
+x = rnorm(N) # fixed effect of observation, predictor variable
+y = 2 + .5 * x + u[groups] + e # generate target
+
+d = data.frame(x, y, groups) # create dataframe
+
+model = lmer(y ~ x + (1|groups), data=d) # create model
+summary(model)
+confint(model)
+# Density plot of random effects
+re = lme4::ranef(model)$groups
+ggplot(re, aes(x = `(Intercept)`)) +
+  geom_density() +
+  xlim(-3, 3)
+
+icc = 0.96073 / (0.96073 + 0.06254)
+icc
+```
+
+Groups variance increases (as expected). ICC also increases to 0.9388822. 
+
+##### 2. 
+Reset the values to the original. Change Ngroups to 50. What differences do you see in the confidence interval estimates?
+```{r}
+set.seed(1234)  # this will allow you to exactly duplicate your result
+Ngroups = 50 # number of group, reduced to 50
+NperGroup = 3 # number per group
+N = Ngroups * NperGroup # number of rows / observations 
+groups = factor(rep(1:Ngroups, each = NperGroup)) # create a vector that has 3 observations of each group
+u = rnorm(Ngroups, sd = 0.5) # random effects by group, SD of 0.5 around 0
+e = rnorm(N, sd = .25) # error, residuals by observation, SD of 0.25 around 0
+x = rnorm(N) # fixed effect of observation, predictor variable
+y = 2 + .5 * x + u[groups] + e # generate target
+
+d = data.frame(x, y, groups) # create dataframe
+
+model = lmer(y ~ x + (1|groups), data=d) # create model
+summary(model)
+confint(model)
+# Density plot of random effects
+re = lme4::ranef(model)$groups
+ggplot(re, aes(x = `(Intercept)`)) +
+  geom_density() +
+  xlim(-3, 3)
+
+icc = 0.96073 / (0.96073 + 0.06254)
+icc
+```
+The confidence interval around the intercept becomes wider with fewer Ngroups. Previously, the confidence interval was between 1.839 and 2.036 (0.197). With larger Ngroups, the confidence interval is now 1.659 and 1.938 (0.279). This means there is greater uncertainty in the intercept with fewer Ngroups. 
+
+The confidence interval around x also becomes wider with fewer Ngroups. Previously, it was 0.473 to 0.542 (0.069). With fewer Ngroups, it is now 0.390 to 0.492 (0.102)
+
+##### 3. 
+Set the Ngroups back to 100. Now change NperGroup to 10, and note again the how the CI is different from the base condition.
+```{r}
+set.seed(1234)  # this will allow you to exactly duplicate your result
+Ngroups = 100 # number of group
+NperGroup = 10 # number per group, increased to 10
+N = Ngroups * NperGroup # number of rows / observations 
+groups = factor(rep(1:Ngroups, each = NperGroup)) # create a vector that has 3 observations of each group
+u = rnorm(Ngroups, sd = 0.5) # random effects by group, SD of 0.5 around 0
+e = rnorm(N, sd = .25) # error, residuals by observation, SD of 0.25 around 0
+x = rnorm(N) # fixed effect of observation, predictor variable
+y = 2 + .5 * x + u[groups] + e # generate target
+
+d = data.frame(x, y, groups) # create dataframe
+
+model = lmer(y ~ x + (1|groups), data=d) # create model
+summary(model)
+confint(model)
+# Density plot of random effects
+re = lme4::ranef(model)$groups
+ggplot(re, aes(x = `(Intercept)`)) +
+  geom_density() +
+  xlim(-3, 3)
+
+icc = 0.96073 / (0.96073 + 0.06254)
+icc
+```
+
+The confidence interval around the intercept is about the same with larger Npergroup. Previously, the confidence interval was between 1.839 and 2.036 (0.197). With larger Npergroup, the confidence interval is now 1.817 and 2.015 (0.198). This means the uncertainty in the intercept does not change with larger Npergroup.  
+
+The confidence interval around x on the other hand becomes narrower with larger Npergroup. Previously, it was 0.473 to 0.542 (0.069). With fewer Ngroups, it is now 0.495 to 0.527 (0.032)
