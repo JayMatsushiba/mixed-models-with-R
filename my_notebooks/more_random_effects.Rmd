@@ -1,9 +1,0 @@
----
-title: "more_random_effects"
-output: html_document
----
-# More Random Effects
-```{r}
-
-```
-

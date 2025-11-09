@@ -1,0 +1,133 @@
+---
+title: "more_random_effects"
+output: html_document
+---
+# More Random Effects
+
+```{r}
+library(here)
+library(tidyverse)
+library(lme4)
+library(merTools)
+load(here("data/gpa.RData"))
+```
+
+## Application
+Allowing the trend over time to vary by student
+```{r}
+# allow trend over time and intercept to vary by student
+gpa_mixed <- lmer(gpa ~ occasion + (1 + occasion | student), data = gpa)
+summary(gpa_mixed)
+```
+
+Variance / SD
+Variance 
+- variance is additive, use for calculating intraclass correlation coefficient
+- ICC tells us proportion of the variance is due to differences between-groups vs within-groups (cluster factor)
+- can use to compare between models 
+
+SD
+- SD describes the spread in data with interpretable units, meaning that the SD is in the same units as the original measurement 
+- This means it can be used describe ranges and create prediction intervals (what is likely to be the value in the target variable given the predictor variable, ex. mean +/- 2 SD captures 95% of values)
+- This means it is easily interpretable by non-statisticians and good for understanding the magnitude of effects 
+
+THEREFORE: 
+The STANDARD DEVIATION of the student x occasion random effect is substantial (0.067) compared to the slope of the occasion fixed effect (0.11). In other words, 95% of students rate of improvement falls between  0.024 and 0.244 GPA per semester. Some students are barely improving, while others are improving at a rate more than double that of the average student. 
+
+The -0.10 correlation means that the students with lower starting GPAs (lower random intercepts) tend to have faster rasters of improvement - the correlation is between the random intercepts and the random slope
+
+## Comparison to many regressions
+Under many regressions, a linear regression model is generated for every group with unique intercepts and slopes for each. In comparison, mixed models will also generate intercepts and slopes for each group, but also considers the overall trend. Mixed models consider both the overall population trend, as well as the group trend. Mixed models estimate the group-specific effects (intercepts and slopes) while also borrowing information from the overall population trend. This balances between the complete independence between groups (separate regressions) and the complete pooling or ignoring groups, where one regression is run for the whole population. 
+
+As a result, mixed models make the greatest shrinkage (most regularization) compared to many regressions when the per group observations is small and the variance or the differences between groups is small. Mixed models shrink the effect of the group compared to many regressions when there is less information (less observations) per group, and/or there is less differences between groups (less variance). 
+
+On the other hand, when the group variance is large (big differences between groups, bigger than between observations), then we have more uncertainty about population average, because there is more variability between groups that make it harder to find a single "average" that represents all groups well. When running separate regressions, the between-group variability is ignored in estimating uncertainty (since the regressions only consider observations within a given group). In mixed models, this between-group variability (heterogeneity) is explicitly estimated through the random effects variance components, clearly showing the uncertainty due to group differences. 
+
+What does regularization and shrinkage mean? 
+- Shrinkage refers to pulling extreme group-specific estimates (random effects) towards the population average (fixed effects). 
+- Regularization means adding constraints to prevent overfitting by penalizing extreme / complex estimates. Constraints mean to fit estimates to a narrower range of possible values. Overfitting means creating models that are too biased towards a specific set of data, making these models less accurate for describing the overall real-world trend. Penalizing means that the model imposes a cost on these values, in this case the extreme and complex estimates. The cost is stronger evidence, meaning more data, or otherwise extreme estimates get pulled toward the mean. 
+- Mixed models assume group-specific effects come from a common distribution. With limited data, the model "trusts" the group-specific effects less and draws more upon the common distribution (which is the population average trend). When groups have more data or larger differences, they resist shrinkage more (keep their group-specific effects). 
+
+Shrinkage depends on three main factors: 
+1. Sample size per group (so fewer observations within a group, more shrinkage or pull towards the mean)
+2. Ratio of within-group to between-group variance (higher ratio, meaning within-group noise is large compared to between group differences, means more shrinkage)
+3. Distance from mean (more extreme estimates, greater pull towards mean, but also moderated by first two factors. Ex. extreme estimates with larger sample size per group and has small within-group noise compared to between-group differences would resist shrinkage.)
+
+## Visualization of effects
+The visualizations show that the separate regressions by group makes the trend much more noisy, with many more groups having a downward trend (i.e. students getting worse gpa with each semester). Mixed models reduced this to only have three trends among 200 that are estimate to be negative, since these trends experienced shrinkage to bring them closer to the population average trend. 
+
+## Categorical features
+I understand categorical features conceptually, and the effect that categorical features could have on each student (random effect). 
+
+Binary features (yes / no, or true / false) can be incorporated as another coefficient that has an effect if true, and no effect when false. 
+
+Categorical features mean many 
+
+Convergence means that the algorithm was able to find the global maximum optimal value for all parameteres in a model. Having too complicated of a model, such as by having too many variance parameters, can make it difficult to find this global optimum for model parameters. 
+
+## Exercises 
+### Sleep Revisited
+```{r}
+library(tidyverse)
+library(lme4)
+library(merTools)
+
+data("sleepstudy")
+
+model_sleepstudy <- lmer(Reaction ~ Days + (1 + Days | Subject), sleepstudy)
+summary(model_sleepstudy)
+```
+
+Starting with fixed effects: 
+- The intercept is 251.4 milliseconds. This means that on average across all subjects, the starting reaction time is 251.4 milliseconds. 
+- The slope for Days is 10.5 milliseconds. This means that on average across all subjects, the reaction times increases by 10.5 milliseconds each day of the study. 
+
+Random effects: 
+- The variance around the intercept due to differences in subject is 612.1. The ICC is 0.48, meaning 48% of the variance around the intercept is due to differences in subject. In other words, about half of the variation around starting reaction time is due to differences in subjects. 
+- The standard deviation around Days | Subject random effects, meaning the slope of the change in reaction time over days by subject, is 5.9 milliseconds. About 95% of subjects have a change in reaction time over days that range between 10.5 +/- 11.8 milliseconds due to between-group (between subjects) differences. 
+- The correlation of random intercept (subject intercept) and random slope (slope between days and reaction time, by subject) is 0.07. This is extremely weak (almost zero), so this means that the baseline reaction time (subject reaction time at the beginning of the experiment, the random effects intercept) has no relationship with how the reaction time changes over days (the random effects slope). 
+
+```{r}
+ce <- coef(model_sleepstudy)
+```
+
+This returns the intercept and slope for each subject, with both fixed and random effects. 
+
+```{r}
+re <- ranef(model_sleepstudy)$Subject
+```
+
+This returns the intercept and slope for each subject, for random effects. This shows the differences between subjects intercept and slope that are due to differences in subject, rather than residuals or other random effects than Subject (this model does not include other random effects, but possible for other models.)
+
+Both intercept and slope should be centered around a mean of 0. 
+
+```{r}
+fe <- fixef(model_sleepstudy)
+```
+
+This returns the intercept and slope for fixed effects. In other words, the entire population average intercept and slope. 
+
+```{r}
+apply(re, 1, function(x) x + fe) %>% t()
+```
+
+This line returns the same values as `coef()`. 
+
+### Simulation revisited
+
+```{r}
+set.seed(1234) # this will allow you to exactly duplicate your result
+Ngroups = 50 # number of groups
+NperGroup = 3 # number of observations per group
+N = Ngroups * NperGroup # number of total observations
+groups = factor(rep(1:Ngroups, each = NperGroup)) # create list of observations, repeat Npergroup for each Ngroups
+re_int = rnorm(Ngroups, sd = .75) # random intercept per group around SD of 0.75
+re_slope = rnorm(Ngroups, sd = .25) # random slope per group around SD of 0.25
+e = rnorm(N, sd = .25) # residual or error around SD of 0.25, per observation
+x = rnorm(N) # predictor variable
+y = (2 + re_int[groups]) + (.5 + re_slope[groups]) * x + e # target variable
+# 2 + re_int[groups] is the fixed effect intercept + random effect intercept
+# .5 + re_slope[groups]) * x is the fixed effect slope + random effect slope, times predictor variable
+d = data.frame(x, y, groups) # create dataframe
+```
+
