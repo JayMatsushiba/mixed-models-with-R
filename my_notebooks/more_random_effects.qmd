@@ -131,3 +131,24 @@ y = (2 + re_int[groups]) + (.5 + re_slope[groups]) * x + e # target variable
 d = data.frame(x, y, groups) # create dataframe
 ```
 
+```{r}
+model_ints_only <- lmer(y ~ x + (1 | groups), data = d)
+
+model_with_slopes <- lmer(y ~ x + (1 | groups) + (0 + x | groups), data = d)
+
+summary(model_with_slopes)
+
+confint(model_with_slopes)
+
+library(ggplot2)
+
+ggplot(aes(x, y), data = d) +
+  geom_point()
+
+
+AIC(model_ints_only) # 256.0606
+AIC(model_with_slopes) # 240.7851, lower is better
+
+```
+
+Okay, I totally overthought this exercise. I simply needed to run the AIC comparisons across the two different models, with the model_with_slopes coming out ahead with the lower AIC value. Why does it have a lower value, meaning it has a better model fit with the data? This is because we generated the original data with random slopes. Therefore, a model that includes random slopes (slopes different by group) would fit the generated data better. It is a bit circular, since we are the ones that generated the data in the first place, but this demonstrates that we can fit models better this way. 
